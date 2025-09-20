@@ -2,8 +2,8 @@
 # This Makefile provides common development tasks for the project
 
 # Variables
-BINARY_NAME=simple-mcp
-MAIN_PACKAGE=./cmd/main.go
+BINARY_NAME=finance-mcp
+MAIN_PACKAGE=./cmd/server/main.go
 BUILD_DIR=bin
 VERSION ?= v1.0.0
 LDFLAGS=-ldflags "-X main.version=${VERSION}"
