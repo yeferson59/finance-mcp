@@ -10,9 +10,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"simple-mcp/internal/models"
 	"strings"
 	"time"
+
+	"github.com/yeferson59/finance-map/internal/models"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

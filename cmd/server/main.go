@@ -20,8 +20,9 @@ package main
 import (
 	"context"
 	"log"
-	"simple-mcp/internal/config"
-	"simple-mcp/internal/tools"
+
+	"github.com/yeferson59/finance-map/internal/config"
+	"github.com/yeferson59/finance-map/internal/tools"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

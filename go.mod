@@ -1,4 +1,4 @@
-module simple-mcp
+module github.com/yeferson59/finance-map
 
 go 1.25.1
 
