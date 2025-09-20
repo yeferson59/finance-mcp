@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -14,8 +16,12 @@ func main() {
 	// Create a new client, with no features.
 	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-client", Version: "v1.0.0"}, nil)
 
+	_, filename, _, _ := runtime.Caller(0)
+	projectRoot := filepath.Dir(filepath.Dir(filepath.Dir(filename)))
+	mcpPath := filepath.Join(projectRoot, "bin/simple-mcp")
+
 	// Connect to a server over stdin/stdout
-	transport := &mcp.CommandTransport{Command: exec.Command("../../bin/simple-mcp")}
+	transport := &mcp.CommandTransport{Command: exec.Command(mcpPath)}
 	session, err := client.Connect(ctx, transport, nil)
 	if err != nil {
 		log.Fatal(err)
