@@ -1,4 +1,4 @@
-module github.com/yeferson59/finance-map
+module github.com/yeferson59/finance-mcp
 
 go 1.25.1
 

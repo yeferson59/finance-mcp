@@ -21,8 +21,8 @@ import (
 	"context"
 	"log"
 
-	"github.com/yeferson59/finance-map/internal/config"
-	"github.com/yeferson59/finance-map/internal/tools"
+	"github.com/yeferson59/finance-mcp/internal/config"
+	"github.com/yeferson59/finance-mcp/internal/tools"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

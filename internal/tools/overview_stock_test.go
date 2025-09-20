@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/yeferson59/finance-map/internal/config"
-	"github.com/yeferson59/finance-map/internal/models"
+	"github.com/yeferson59/finance-mcp/internal/config"
+	"github.com/yeferson59/finance-mcp/internal/models"
 
 	"github.com/stretchr/testify/assert"
 )

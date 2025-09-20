@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yeferson59/finance-map/internal/models"
+	"github.com/yeferson59/finance-mcp/internal/models"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
