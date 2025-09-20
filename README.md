@@ -1,5 +1,3 @@
-simple-mcp/README.md
-
 # Simple MCP Market Data Server
 
 **Simple MCP Market Data** is an MCP (Model Context Protocol) server implemented in Go that provides tools for querying real-time stock market financial data via the Alpha Vantage API.
