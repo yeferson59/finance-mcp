@@ -58,6 +58,7 @@ func main() {
 	// This tool handles HTTP requests to Alpha Vantage API for stock data
 	// Note: Both parameters should be cfg.APIURL and cfg.APIKey respectively
 	stockOverviewTool := tools.NewOverviewStock(cfg.APIURL, cfg.APIKey)
+	stockIntradayPriceTool := tools.NewIntradayPriceStock(cfg.APIURL, cfg.APIKey)
 
 	// Step 6: Register the "get-stock" tool with the MCP server
 	// Tool specification:
@@ -67,9 +68,14 @@ func main() {
 	//
 	// This tool allows MCP clients to query stock information by providing a symbol
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get-stock",
+		Name:        "get_overview_stock",
 		Description: "Get comprehensive stock market data for a specific company using its stock symbol (e.g., AAPL, GOOGL, MSFT). Returns detailed financial metrics, company information, and market data.",
 	}, stockOverviewTool.Get)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_intraday_price_stock",
+		Description: "Get intraday stock price data for a specific company using its stock symbol (e.g., AAPL, GOOGL, MSFT). Returns price, volume, and other financial metrics for the specified time interval.",
+	}, stockIntradayPriceTool.Get)
 
 	// Step 7: Start the MCP server with stdio transport
 	// The server communicates via stdin/stdout using JSON-RPC over stdio
