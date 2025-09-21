@@ -33,3 +33,12 @@ type SymbolInput struct {
 	// The description helps AI models understand what kind of input is expected.
 	Symbol string `json:"symbol" jsonschema:"the symbol of the stock to get"`
 }
+
+type IntradayPriceInput struct {
+	Symbol        string  `json:"symbol" jsonschema:"the symbol of the stock to get"`
+	Interval      string  `json:"interval" jsonschema:"the interval of the intraday price data e.g. '1min', '5min', '15min', '30min', '60min'"`
+	Adjusted      *bool   `json:"adjusted" jsonschema:"By default, adjusted=true and the output time series is adjusted by historical split and dividend events. Set adjusted=false to query raw (as-traded) intraday values."`
+	ExtendedHours *bool   `json:"extendedHours" jsonschema:"By default, extended_hours=true and the output time series will include both the regular trading hours and the extended (pre-market and post-market) trading hours (4:00am to 8:00pm Eastern Time for the US market). Set extended_hours=false to query regular trading hours (9:30am to 4:00pm US Eastern Time) only."`
+	Month         *string `json:"month" jsonschema:"By default, this parameter is not set and the API will return intraday data for the most recent days of trading. You can use the month parameter (in YYYY-MM format) to query a specific month in history. For example, month=2009-01. Any month in the last 20+ years since 2000-01 (January 2000) is supported."`
+	OutputSize    *string `json:"outputSize" jsonschema:"By default, output_size=compact and the API will return a compact set of data points. You can use the output_size parameter to query a full set of data points. For example, output_size=full. Any month in the last 20+ years since 2000-01 (January 2000) is supported."`
+}
