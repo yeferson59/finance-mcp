@@ -24,7 +24,7 @@ func main() {
 	defer session.Close()
 
 	params := &mcp.CallToolParams{
-		Name:      "get-stock",
+		Name:      "get_overview_stock",
 		Arguments: map[string]any{"symbol": "AAPL"},
 	}
 	res, err := session.CallTool(ctx, params)
