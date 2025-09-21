@@ -2,6 +2,10 @@
 // in the MCP financial data server.
 package models
 
+import (
+	"time"
+)
+
 // OverviewOutput represents comprehensive stock and company information
 // returned by the get-stock MCP tool.
 //
@@ -67,4 +71,27 @@ type OverviewOutput struct {
 	EBITDA        string `json:"EBITDA,omitempty"`        // Earnings before interest, taxes, depreciation, and amortization
 	AssetType     string `json:"AssetType,omitempty"`     // Type of asset (usually "Common Stock")
 	CIK           string `json:"CIK,omitempty"`           // Central Index Key (SEC identifier)
+}
+
+type OHLCVFloat struct {
+	Timestamp time.Time `json:"timestamp"`
+	Open      float64   `json:"open"`
+	High      float64   `json:"high"`
+	Low       float64   `json:"low"`
+	Close     float64   `json:"close"`
+	Volume    int64     `json:"volume"`
+}
+
+type MetaData struct {
+	Information   string `json:"1. Information"`
+	Symbol        string `json:"2. Symbol"`
+	LastRefreshed string `json:"3. Last Refreshed"`
+	Interval      string `json:"4. Interval"`
+	OutputSize    string `json:"5. Output Size"`
+	TimeZone      string `json:"6. Time Zone"`
+}
+
+type IntradayStockOutput struct {
+	MetaData   MetaData     `json:"meta_data"`
+	TimeSeries []OHLCVFloat `json:"time_series"`
 }
