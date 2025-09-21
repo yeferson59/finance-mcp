@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
-	"runtime"
 
 	"github.com/joho/godotenv"
+	"github.com/yeferson59/finance-mcp/pkg/file"
 )
 
 type Env struct{}
@@ -17,9 +16,7 @@ func NewEnv() *Env {
 }
 
 func (Env) loadEnv() error {
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Dir(filepath.Dir(filepath.Dir(filename)))
-	envPath := filepath.Join(projectRoot, ".env")
+	envPath := file.GetPathFile(".env")
 	err := godotenv.Load(envPath)
 
 	if err != nil {

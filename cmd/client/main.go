@@ -4,23 +4,18 @@ import (
 	"context"
 	"log"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/yeferson59/finance-mcp/pkg/file"
 )
 
 func main() {
 	ctx := context.Background()
 
-	// Create a new client, with no features.
 	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-client", Version: "v1.0.0"}, nil)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Dir(filepath.Dir(filepath.Dir(filename)))
-	mcpPath := filepath.Join(projectRoot, "bin/simple-mcp")
+	mcpPath := file.GetPathFile("bin/finance-mcp")
 
-	// Connect to a server over stdin/stdout
 	transport := &mcp.CommandTransport{Command: exec.Command(mcpPath)}
 	session, err := client.Connect(ctx, transport, nil)
 	if err != nil {
@@ -28,7 +23,6 @@ func main() {
 	}
 	defer session.Close()
 
-	// Call a tool on the server.
 	params := &mcp.CallToolParams{
 		Name:      "get-stock",
 		Arguments: map[string]any{"symbol": "AAPL"},
