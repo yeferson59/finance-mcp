@@ -1,11 +1,8 @@
-# Simple MCP Market Data Server Makefile
-# This Makefile provides common development tasks for the project
-
 # Variables
 BINARY_NAME=finance-mcp
 MAIN_PACKAGE=./cmd/server/main.go
 BUILD_DIR=bin
-VERSION ?= v1.0.0
+VERSION ?=v1.0.0
 LDFLAGS=-ldflags "-X main.version=${VERSION}"
 
 # Go related variables
