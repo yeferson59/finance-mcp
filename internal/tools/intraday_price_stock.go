@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+
 	"fmt"
 	"io"
 	"net/http"
@@ -40,14 +41,16 @@ func NewIntradayPriceStock(apiURL, apiKey string) *IntradayPriceStock {
 func (s *IntradayPriceStock) Get(ctx context.Context, req *mcp.CallToolRequest, input models.IntradayPriceInput) (*mcp.CallToolResult, models.IntradayStockOutput, error) {
 	baseURL := fmt.Sprintf("%s/query?function=TIME_SERIES_INTRADAY&symbol=%s&interval=%s&apikey=%s", s.APIURL, strings.ToUpper(input.Symbol), input.Interval, s.APIKey)
 
-	switch {
-	case input.Adjusted != nil:
+	if input.Adjusted != nil {
 		baseURL += fmt.Sprintf("&adjusted=%t", *input.Adjusted)
-	case input.ExtendedHours != nil:
+	}
+	if input.ExtendedHours != nil {
 		baseURL += fmt.Sprintf("&extended_hours=%t", *input.ExtendedHours)
-	case input.Month != nil:
+	}
+	if input.Month != nil {
 		baseURL += fmt.Sprintf("&month=%s", *input.Month)
-	case input.OutputSize != nil:
+	}
+	if input.OutputSize != nil {
 		baseURL += fmt.Sprintf("&outputsize=%s", *input.OutputSize)
 	}
 
@@ -63,11 +66,12 @@ func (s *IntradayPriceStock) Get(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 
 	bodyBytes, err := io.ReadAll(res.Body)
+
 	if err != nil {
 		return nil, models.IntradayStockOutput{}, err
 	}
 
-	rawData, err := parser.ParseResponse(string(bodyBytes))
+	rawData, err := parser.IntradayPrices(bodyBytes)
 
 	if err != nil {
 		return nil, models.IntradayStockOutput{}, err
@@ -75,5 +79,9 @@ func (s *IntradayPriceStock) Get(ctx context.Context, req *mcp.CallToolRequest, 
 
 	data, err := rawData.ProcessTimeSeries()
 
-	return &mcp.CallToolResult{}, *data, nil
+	if err != nil {
+		return nil, models.IntradayStockOutput{}, err
+	}
+
+	return nil, *data, nil
 }
