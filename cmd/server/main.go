@@ -18,8 +18,8 @@
 package main
 
 import (
-	"context"
 	"log"
+	"net/http"
 
 	"github.com/yeferson59/finance-mcp/internal/config"
 	"github.com/yeferson59/finance-mcp/internal/tools"
@@ -48,7 +48,7 @@ func main() {
 
 	// Step 3: Create background context for server operations
 	// This context will be used for all MCP protocol operations
-	ctx := context.Background()
+	// ctx := context.Background()
 
 	// Step 4: Initialize MCP server with implementation details
 	// The server handles MCP protocol communication and tool routing
@@ -77,10 +77,11 @@ func main() {
 		Description: "Get intraday stock price data for a specific company using its stock symbol (e.g., AAPL, GOOGL, MSFT). Returns price, volume, and other financial metrics for the specified time interval.",
 	}, stockIntradayPriceTool.Get)
 
-	// Step 7: Start the MCP server with stdio transport
-	// The server communicates via stdin/stdout using JSON-RPC over stdio
-	// This allows the server to be easily integrated with MCP clients
-	if err := server.Run(ctx, &mcp.StdioTransport{}); err != nil {
-		log.Fatal("Failed to start MCP server:", err)
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return server
+	}, nil)
+
+	if err := http.ListenAndServe(":8080", handler); err != nil {
+		log.Fatalf("server failed %v", err)
 	}
 }
