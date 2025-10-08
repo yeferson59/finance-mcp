@@ -7,11 +7,12 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/yeferson59/finance-mcp/internal/models"
 
@@ -131,7 +132,7 @@ func (os *OverviewStock) Get(ctx context.Context, req *mcp.CallToolRequest, inpu
 
 	// Parse JSON response
 	var data models.OverviewOutput
-	decoder := json.NewDecoder(res.Body)
+	decoder := sonic.ConfigDefault.NewDecoder(res.Body)
 
 	if err := decoder.Decode(&data); err != nil {
 		return nil, models.OverviewOutput{}, fmt.Errorf("failed to parse stock data response for symbol '%s': %w", symbol, err)

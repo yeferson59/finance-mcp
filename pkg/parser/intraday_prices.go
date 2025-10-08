@@ -1,13 +1,14 @@
 package parser
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/yeferson59/finance-mcp/internal/models"
 )
@@ -49,7 +50,7 @@ func IntradayPrices(jsonData []byte) (*AlphaVantageResponse, error) {
 	var rawResponse map[string]any
 
 	// First, unmarshal into a generic map to handle dynamic keys
-	err := json.Unmarshal(jsonData, &rawResponse)
+	err := sonic.Unmarshal(jsonData, &rawResponse)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing JSON into raw map: %w", err)
 	}
@@ -58,7 +59,7 @@ func IntradayPrices(jsonData []byte) (*AlphaVantageResponse, error) {
 	response.rawData = rawResponse
 
 	// Unmarshal into the structured response for MetaData
-	err = json.Unmarshal(jsonData, &response)
+	err = sonic.Unmarshal(jsonData, &response)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing JSON into structured response: %w", err)
 	}
