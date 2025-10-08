@@ -6,7 +6,6 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -160,7 +159,7 @@ func (os *OverviewStock) Get(ctx context.Context, req *mcp.CallToolRequest, inpu
 	var data models.OverviewOutput
 
 	os.mu.Lock()
-	err = os.parser.Parse(&data, bytes.NewReader(res))
+	err = os.parser.ParseBytes(&data, res)
 	os.mu.Unlock()
 
 	if err != nil {
