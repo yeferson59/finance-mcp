@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yeferson59/finance-mcp/internal/models"
+	"github.com/yeferson59/finance-mcp/pkg/client"
 	"github.com/yeferson59/finance-mcp/pkg/parser"
-	"github.com/yeferson59/finance-mcp/pkg/requests"
+	"github.com/yeferson59/finance-mcp/pkg/request"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -31,13 +33,8 @@ import (
 // data validation automatically with proper context support for timeouts
 // and cancellation.
 type OverviewStock struct {
-	// APIURL is the base URL for Alpha Vantage API endpoints
-	// (typically "https://www.alphavantage.co")
-	APIURL string `json:"apiURL"`
-
-	// APIKey is the authentication key for Alpha Vantage API access
-	// Required for all API requests
-	APIKey string `json:"apiKey"`
+	// alphaClient is the injected Alpha Vantage client
+	alphaClient *request.AlphaVantageClient
 
 	// parser is a reusable JSON parser instance to avoid allocation overhead
 	parser *parser.JSON
@@ -47,7 +44,7 @@ type OverviewStock struct {
 }
 
 // NewOverviewStock creates a new OverviewStock tool instance with the provided
-// Alpha Vantage API configuration.
+// Alpha Vantage API configuration using dependency injection.
 //
 // Parameters:
 //   - apiURL: Base URL for Alpha Vantage API (e.g., "https://www.alphavantage.co")
@@ -56,13 +53,23 @@ type OverviewStock struct {
 // Returns:
 //   - Configured OverviewStock instance ready for use as MCP tool
 //
-// The returned instance includes a preconfigured JSON parser that is reused
-// across requests for better performance.
+// The returned instance includes a preconfigured JSON parser and HTTP client
+// that are reused across requests for better performance.
 func NewOverviewStock(apiURL, apiKey string) *OverviewStock {
+	config := &request.AlphaVantageConfig{
+		BaseURL: apiURL,
+		APIKey:  apiKey,
+		Timeout: 30 * time.Second,
+	}
+
+	httpConfig := client.DefaultConfig()
+	httpConfig.UserAgent = "Finance-MCP-Server/1.0"
+	httpClient := client.NewFastHTTPClient(httpConfig)
+	alphaClient := request.NewAlphaVantageClient(httpClient, config)
+
 	return &OverviewStock{
-		APIURL: apiURL,
-		APIKey: apiKey,
-		parser: parser.NewJSON(),
+		alphaClient: alphaClient,
+		parser:      parser.NewJSON(),
 	}
 }
 
@@ -136,16 +143,16 @@ func (os *OverviewStock) Get(ctx context.Context, req *mcp.CallToolRequest, inpu
 	default:
 	}
 
-	client := requests.NewAlpha(
-		os.APIURL,
-		os.APIKey,
+	requestClient := request.NewAlphaWithClient(
+		os.alphaClient,
 		input.Symbol,
-		[]requests.Query{
-			requests.NewQuery("function", "OVERVIEW"),
+		[]request.Query{
+			request.NewQuery("function", "OVERVIEW"),
 		},
 	)
 
-	res, err := client.Get()
+	// Make API request with context support
+	res, err := requestClient.GetWithContext(ctx)
 	if err != nil {
 		return nil, models.OverviewOutput{}, fmt.Errorf("failed to fetch stock data for symbol '%s': %w", input.Symbol, err)
 	}
