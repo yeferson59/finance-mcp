@@ -92,6 +92,6 @@ type MetaData struct {
 }
 
 type IntradayStockOutput struct {
-	MetaData   MetaData     `json:"meta_data"`
-	TimeSeries []OHLCVFloat `json:"time_series"`
+	MetaData   MetaData     `json:"metaData"`
+	TimeSeries []OHLCVFloat `json:"timeSeries"`
 }
