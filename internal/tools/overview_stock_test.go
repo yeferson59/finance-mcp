@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/yeferson59/finance-mcp/internal/config"
@@ -21,8 +20,9 @@ func TestOverviewStock(t *testing.T) {
 
 	_, res, err := overviewStock.Get(ctx, nil, input)
 
-	assert.NoError(t, err)
-	assert.NotNil(t, res)
+	tx := assert.New(t)
 
-	fmt.Println(res)
+	tx.NoError(err)
+	tx.NotNil(res)
+	tx.Equal(input.Symbol, res.Symbol)
 }
