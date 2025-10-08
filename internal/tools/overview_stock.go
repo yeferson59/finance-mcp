@@ -9,8 +9,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/http"
-	"time"
+	"strings"
+	"sync"
 
 	"github.com/yeferson59/finance-mcp/internal/models"
 	"github.com/yeferson59/finance-mcp/pkg/parser"
@@ -29,7 +29,8 @@ import (
 //   - Performance ratios (ROE, ROA, profit margins)
 //
 // The tool handles HTTP communication, JSON parsing, error handling, and
-// data validation automatically.
+// data validation automatically with proper context support for timeouts
+// and cancellation.
 type OverviewStock struct {
 	// APIURL is the base URL for Alpha Vantage API endpoints
 	// (typically "https://www.alphavantage.co")
@@ -39,9 +40,11 @@ type OverviewStock struct {
 	// Required for all API requests
 	APIKey string `json:"apiKey"`
 
-	// httpClient is the configured HTTP client for API requests
-	// Includes timeout settings for reliable operation
-	httpClient *http.Client
+	// parser is a reusable JSON parser instance to avoid allocation overhead
+	parser *parser.JSON
+
+	// mu protects the parser for concurrent access
+	mu sync.RWMutex
 }
 
 // NewOverviewStock creates a new OverviewStock tool instance with the provided
@@ -54,16 +57,47 @@ type OverviewStock struct {
 // Returns:
 //   - Configured OverviewStock instance ready for use as MCP tool
 //
-// The returned instance includes a preconfigured HTTP client with reasonable
-// timeout settings (30 seconds) to handle network latency and API response times.
+// The returned instance includes a preconfigured JSON parser that is reused
+// across requests for better performance.
 func NewOverviewStock(apiURL, apiKey string) *OverviewStock {
 	return &OverviewStock{
 		APIURL: apiURL,
 		APIKey: apiKey,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second, // 30-second timeout for API requests
-		},
+		parser: parser.NewJSON(),
 	}
+}
+
+// validateInput performs input validation on the symbol input
+func (os *OverviewStock) validateInput(input models.SymbolInput) error {
+	if strings.TrimSpace(input.Symbol) == "" {
+		return fmt.Errorf("symbol cannot be empty")
+	}
+
+	symbol := strings.TrimSpace(input.Symbol)
+
+	if len(symbol) > 10 {
+		return fmt.Errorf("symbol '%s' appears to be invalid (too long)", symbol)
+	}
+
+	for _, char := range symbol {
+		if !((char >= 'A' && char <= 'Z') ||
+			(char >= 'a' && char <= 'z') ||
+			(char >= '0' && char <= '9') ||
+			char == '.') {
+			return fmt.Errorf("symbol '%s' contains invalid characters", symbol)
+		}
+	}
+
+	return nil
+}
+
+// validateResponse checks if the API response contains error information
+func (os *OverviewStock) validateResponse(data models.OverviewOutput, symbol string) error {
+	if data.Symbol == "" && data.Name == "" {
+		return fmt.Errorf("no data returned for symbol '%s' - symbol may not exist or API limit reached", symbol)
+	}
+
+	return nil
 }
 
 // Get retrieves comprehensive stock market data for the specified stock symbol.
@@ -83,14 +117,26 @@ func NewOverviewStock(apiURL, apiKey string) *OverviewStock {
 //
 // Error conditions:
 //   - Invalid or empty stock symbol
+//   - Context cancellation or timeout
 //   - Network connectivity issues
 //   - Alpha Vantage API errors (rate limits, invalid API key, etc.)
 //   - JSON parsing errors
-//   - HTTP timeout (30 second limit)
+//   - Invalid response data
 //
 // The method automatically converts stock symbols to uppercase and handles
 // various Alpha Vantage response formats including error responses.
+// It respects the context for cancellation and timeout control.
 func (os *OverviewStock) Get(ctx context.Context, req *mcp.CallToolRequest, input models.SymbolInput) (*mcp.CallToolResult, models.OverviewOutput, error) {
+	if err := os.validateInput(input); err != nil {
+		return nil, models.OverviewOutput{}, fmt.Errorf("input validation failed: %w", err)
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, models.OverviewOutput{}, ctx.Err()
+	default:
+	}
+
 	client := requests.NewAlpha(
 		os.APIURL,
 		os.APIKey,
@@ -105,10 +151,25 @@ func (os *OverviewStock) Get(ctx context.Context, req *mcp.CallToolRequest, inpu
 		return nil, models.OverviewOutput{}, fmt.Errorf("failed to fetch stock data for symbol '%s': %w", input.Symbol, err)
 	}
 
-	var data models.OverviewOutput
-	NewJson := parser.NewJSON()
+	select {
+	case <-ctx.Done():
+		return nil, models.OverviewOutput{}, ctx.Err()
+	default:
+	}
 
-	err = NewJson.Parse(&data, bytes.NewReader(res))
+	var data models.OverviewOutput
+
+	os.mu.Lock()
+	err = os.parser.Parse(&data, bytes.NewReader(res))
+	os.mu.Unlock()
+
+	if err != nil {
+		return nil, models.OverviewOutput{}, fmt.Errorf("failed to parse stock data for symbol '%s': %w", input.Symbol, err)
+	}
+
+	if err := os.validateResponse(data, input.Symbol); err != nil {
+		return nil, models.OverviewOutput{}, err
+	}
 
 	return nil, data, nil
 }

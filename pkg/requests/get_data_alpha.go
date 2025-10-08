@@ -2,17 +2,20 @@ package requests
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/valyala/fasthttp"
 	"github.com/yeferson59/finance-mcp/pkg/errors"
 )
 
+// Query represents a URL query parameter with name and value
 type Query struct {
 	name  string
 	value string
 }
 
+// NewQuery creates a new Query with the given name and value
 func NewQuery(name string, value string) Query {
 	return Query{
 		name:  name,
@@ -20,22 +23,25 @@ func NewQuery(name string, value string) Query {
 	}
 }
 
+// RequestAlpha represents a request to the Alpha Vantage API
 type RequestAlpha struct {
 	symbol  string
 	apiKey  string
 	baseURL string
-	querys  []Query
+	queries []Query
 }
 
-func NewAlpha(baseURL string, apiKey string, symbol string, querys []Query) *RequestAlpha {
+// NewAlpha creates a new Alpha Vantage request instance
+func NewAlpha(baseURL string, apiKey string, symbol string, queries []Query) *RequestAlpha {
 	return &RequestAlpha{
 		apiKey:  apiKey,
 		baseURL: baseURL,
 		symbol:  symbol,
-		querys:  querys,
+		queries: queries,
 	}
 }
 
+// validate checks if all required fields are present
 func (ra *RequestAlpha) validate() error {
 	if ra.symbol == "" {
 		return errors.ErrSymbolRequired
@@ -52,6 +58,7 @@ func (ra *RequestAlpha) validate() error {
 	return nil
 }
 
+// buildURL constructs the complete API URL with all parameters
 func (ra *RequestAlpha) buildURL() (string, error) {
 	ra.symbol = strings.ToUpper(strings.TrimSpace(ra.symbol))
 
@@ -59,24 +66,34 @@ func (ra *RequestAlpha) buildURL() (string, error) {
 		return "", err
 	}
 
-	var url string = ra.baseURL
-
-	for _, query := range ra.querys {
-		if query.name == "function" {
-			url += fmt.Sprintf("%s=%s&", query.name, strings.ToUpper(query.value))
-		} else {
-			url += fmt.Sprintf("%s=%s&", query.name, query.value)
-		}
+	baseURL, err := url.Parse(ra.baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base URL: %w", err)
 	}
 
-	url += fmt.Sprintf("symbol=%s", ra.symbol)
-	url += fmt.Sprintf("&apikey=%s", ra.apiKey)
-	return url, nil
+	params := url.Values{}
+
+	for _, query := range ra.queries {
+		value := query.value
+
+		if query.name == "function" {
+			value = strings.ToUpper(value)
+		}
+
+		params.Add(query.name, value)
+	}
+
+	params.Add("symbol", ra.symbol)
+	params.Add("apikey", ra.apiKey)
+
+	baseURL.RawQuery = params.Encode()
+
+	return baseURL.String(), nil
 }
 
+// Get performs the HTTP GET request to Alpha Vantage API
 func (ra *RequestAlpha) Get() ([]byte, error) {
 	url, err := ra.buildURL()
-
 	if err != nil {
 		return nil, err
 	}
@@ -88,16 +105,19 @@ func (ra *RequestAlpha) Get() ([]byte, error) {
 
 	req.SetRequestURI(url)
 	req.Header.SetMethod(fasthttp.MethodGet)
-	req.Header.Set("User-Agent", "Simple-MCP-Server/1.0")
+	req.Header.Set("User-Agent", "Finance-MCP-Server/1.0")
 	req.Header.Set("Accept", "application/json")
 
 	if err := fasthttp.Do(req, res); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to perform HTTP request: %w", err)
 	}
 
 	if res.StatusCode() != fasthttp.StatusOK {
-		return nil, errors.ErrUnexpectedStatusCode
+		return nil, fmt.Errorf("%w: received status %d", errors.ErrUnexpectedStatusCode, res.StatusCode())
 	}
 
-	return res.Body(), nil
+	body := make([]byte, len(res.Body()))
+	copy(body, res.Body())
+
+	return body, nil
 }
