@@ -66,19 +66,16 @@ func (s *IntradayPriceStock) Get(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 
 	bodyBytes, err := io.ReadAll(res.Body)
-
 	if err != nil {
 		return nil, models.IntradayStockOutput{}, err
 	}
 
 	rawData, err := parser.IntradayPrices(bodyBytes)
-
 	if err != nil {
 		return nil, models.IntradayStockOutput{}, err
 	}
 
 	data, err := rawData.ProcessTimeSeries()
-
 	if err != nil {
 		return nil, models.IntradayStockOutput{}, err
 	}
