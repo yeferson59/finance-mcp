@@ -3,167 +3,185 @@
 // This server exposes stock market data through the MCP protocol, allowing AI models
 // and other MCP clients to query real-time financial information using Alpha Vantage API.
 //
-// The server runs as a high-performance fasthttp server, accepting JSON-RPC requests and returning
-// structured financial data responses with optimal performance characteristics.
+// The server runs as a high-performance Fiber server (built on fasthttp), accepting JSON-RPC
+// requests and returning structured financial data responses with optimal performance.
 //
 // Architecture:
 //   - MCP Server: Handles protocol communication and tool registration
-//   - FastHTTP Server: High-performance HTTP server with adapter for MCP handlers
+//   - Fiber Server: High-performance HTTP framework with clean API
 //   - Alpha Vantage Client: Fetches real-time market data
 //   - Tools: Implements specific financial data retrieval functions
 //
 // Usage:
 //
 //	The server listens on port 8080 and can be queried by MCP clients
-//	for real-time financial market data with optimized performance.
+//	for real-time financial market data with enterprise-grade performance.
 package main
 
 import (
-	"bytes"
-	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"strings"
+	"time"
 
-	"github.com/valyala/fasthttp"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/etag"
+	"github.com/gofiber/fiber/v2/middleware/healthcheck"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/yeferson59/finance-mcp/internal/config"
 	"github.com/yeferson59/finance-mcp/internal/tools"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// FastHTTPAdapter adapts net/http handlers to work with fasthttp
-// This allows us to use MCP's HTTP handlers with fasthttp for better performance
-type FastHTTPAdapter struct {
-	httpHandler http.Handler
-}
+// setupFiberApp configures a Fiber app with optimal performance settings
+func setupFiberApp() *fiber.App {
+	app := fiber.New(fiber.Config{
+		Prefork:              false,
+		StrictRouting:        false,
+		CaseSensitive:        false,
+		UnescapePath:         true,
+		BodyLimit:            10 * 1024 * 1024,
+		Concurrency:          256 * 1024,
+		ReadTimeout:          30 * time.Second,
+		WriteTimeout:         30 * time.Second,
+		IdleTimeout:          60 * time.Second,
+		ReadBufferSize:       8192,
+		WriteBufferSize:      8192,
+		CompressedFileSuffix: ".fiber.gz",
+		ProxyHeader:          fiber.HeaderXForwardedFor,
 
-// NewFastHTTPAdapter creates a new adapter for converting net/http handlers to fasthttp
-func NewFastHTTPAdapter(handler http.Handler) *FastHTTPAdapter {
-	return &FastHTTPAdapter{
-		httpHandler: handler,
-	}
-}
+		ErrorHandler: func(c *fiber.Ctx, err error) error {
+			code := fiber.StatusInternalServerError
+			message := "Internal Server Error"
 
-// Handler converts fasthttp.RequestCtx to net/http Request/Response and delegates to the wrapped handler
-func (a *FastHTTPAdapter) Handler(ctx *fasthttp.RequestCtx) {
-	// Convert fasthttp request to net/http request
-	req, err := a.convertToHTTPRequest(ctx)
-	if err != nil {
-		ctx.SetStatusCode(fasthttp.StatusBadRequest)
-		ctx.SetBodyString(fmt.Sprintf("Error converting request: %v", err))
-		return
-	}
+			if e, ok := err.(*fiber.Error); ok {
+				code = e.Code
+				message = e.Message
+			}
 
-	// Create a response writer that captures the response
-	rw := &responseWriter{
-		header: make(http.Header),
-		body:   &bytes.Buffer{},
-	}
+			return c.Status(code).JSON(fiber.Map{
+				"error":     message,
+				"timestamp": time.Now().UTC().Format(time.RFC3339),
+				"path":      c.Path(),
+				"method":    c.Method(),
+			})
+		},
 
-	// Call the original handler
-	a.httpHandler.ServeHTTP(rw, req)
-
-	// Convert response back to fasthttp
-	a.convertToFastHTTPResponse(ctx, rw)
-}
-
-// convertToHTTPRequest converts fasthttp.RequestCtx to *http.Request
-func (a *FastHTTPAdapter) convertToHTTPRequest(ctx *fasthttp.RequestCtx) (*http.Request, error) {
-	var body io.Reader
-	if len(ctx.PostBody()) > 0 {
-		body = bytes.NewReader(ctx.PostBody())
-	}
-
-	req, err := http.NewRequest(string(ctx.Method()), ctx.URI().String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	ctx.Request.Header.VisitAll(func(key, value []byte) {
-		req.Header.Add(string(key), string(value))
+		ServerHeader: "Finance-MCP-Server/1.0",
+		AppName:      "Finance MCP Server",
 	})
 
-	if len(ctx.PostBody()) > 0 {
-		req.ContentLength = int64(len(ctx.PostBody()))
-	}
-
-	req.RemoteAddr = ctx.RemoteAddr().String()
-
-	return req, nil
+	return app
 }
 
-// convertToFastHTTPResponse converts the captured HTTP response to fasthttp response
-func (a *FastHTTPAdapter) convertToFastHTTPResponse(ctx *fasthttp.RequestCtx, rw *responseWriter) {
+// setupMiddleware configures all necessary middleware for the application
+func setupMiddleware(app *fiber.App) {
+	app.Use(requestid.New())
 
-	ctx.SetStatusCode(rw.statusCode)
+	app.Use(recover.New(recover.Config{
+		EnableStackTrace: true,
+	}))
 
-	for key, values := range rw.header {
-		for _, value := range values {
-			ctx.Response.Header.Add(key, value)
-		}
-	}
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     "*",
+		AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH,OPTIONS",
+		AllowHeaders:     "*",
+		AllowCredentials: false,
+		ExposeHeaders:    "X-Request-ID",
+		MaxAge:           86400,
+	}))
 
-	ctx.SetBody(rw.body.Bytes())
+	app.Use(etag.New())
+
+	app.Use(logger.New(logger.Config{
+		Format:     "${time} | ${status} | ${latency} | ${method} ${path} | ${ip} | ${error}\n",
+		TimeFormat: "2006-01-02 15:04:05",
+		TimeZone:   "UTC",
+	}))
+
+	app.Use(healthcheck.New(healthcheck.Config{
+		LivenessProbe: func(c *fiber.Ctx) bool {
+			return true
+		},
+		ReadinessProbe: func(c *fiber.Ctx) bool {
+			return true
+		},
+	}))
 }
 
-// responseWriter implements http.ResponseWriter to capture the response
-type responseWriter struct {
-	header     http.Header
-	body       *bytes.Buffer
-	statusCode int
+// setupRoutes configures all application routes
+func setupRoutes(app *fiber.App, mcpHandler http.Handler) {
+
+	app.Get("/health", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"status":    "ok",
+			"service":   "finance-mcp-server",
+			"version":   "1.0.0",
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+			"uptime":    time.Since(startTime).String(),
+		})
+	})
+
+	app.Get("/health/live", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"status": "alive",
+		})
+	})
+
+	app.Get("/health/ready", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"status": "ready",
+			"checks": fiber.Map{
+				"api": "ok",
+			},
+		})
+	})
+
+	app.Get("/info", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"name":        "Finance MCP Server",
+			"version":     "1.0.0",
+			"description": "Model Context Protocol server for financial market data",
+			"endpoints": fiber.Map{
+				"health":  "/health",
+				"mcp":     "/",
+				"mcp_alt": "/mcp",
+			},
+		})
+	})
+
+	app.All("/", adaptor.HTTPHandler(mcpHandler))
+	app.All("/mcp", adaptor.HTTPHandler(mcpHandler))
+	app.All("/mcp/*", adaptor.HTTPHandler(mcpHandler))
+
+	app.Use(func(c *fiber.Ctx) error {
+		return fiber.NewError(fiber.StatusNotFound, "Endpoint not found")
+	})
 }
 
-func (rw *responseWriter) Header() http.Header {
-	return rw.header
-}
-
-func (rw *responseWriter) Write(data []byte) (int, error) {
-	if rw.statusCode == 0 {
-		rw.statusCode = http.StatusOK
-	}
-	return rw.body.Write(data)
-}
-
-func (rw *responseWriter) WriteHeader(statusCode int) {
-	rw.statusCode = statusCode
-}
-
-// Additional methods to satisfy http.ResponseWriter interface completely
-func (rw *responseWriter) WriteString(s string) (int, error) {
-	return rw.Write([]byte(s))
-}
-
-// setupCORS configures CORS headers for the response
-func setupCORS(ctx *fasthttp.RequestCtx) {
-	ctx.Response.Header.Set("Access-Control-Allow-Origin", "*")
-	ctx.Response.Header.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	ctx.Response.Header.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-	ctx.Response.Header.Set("Access-Control-Max-Age", "86400")
-}
-
-// healthCheckHandler provides a simple health check endpoint
-func healthCheckHandler(ctx *fasthttp.RequestCtx) {
-	if string(ctx.Path()) == "/health" {
-		setupCORS(ctx)
-		ctx.SetStatusCode(fasthttp.StatusOK)
-		ctx.SetContentType("application/json")
-		ctx.SetBodyString(`{"status":"ok","service":"finance-mcp-server"}`)
-		return
-	}
-}
+var startTime = time.Now()
 
 func main() {
-	log.Println("Starting Finance MCP Server with FastHTTP...")
+	log.Println("🚀 Starting Finance MCP Server with Fiber framework...")
 
 	cfg := config.NewConfig()
+	if cfg.APIURL == "" || cfg.APIKey == "" {
+		log.Fatal("❌ Missing required configuration: APIURL and APIKey must be set")
+	}
+
 	impl := cfg.Implementation
 	server := mcp.NewServer(impl, nil)
+
+	log.Println("📊 Initializing financial data tools with DI architecture...")
 
 	stockOverviewTool := tools.NewOverviewStock(cfg.APIURL, cfg.APIKey)
 	stockIntradayPriceTool := tools.NewIntradayPriceStock(cfg.APIURL, cfg.APIKey)
 
+	log.Println("🔧 Registering MCP tools...")
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_overview_stock",
 		Description: "Get comprehensive stock market data for a specific company using its stock symbol (e.g., AAPL, GOOGL, MSFT). Returns detailed financial metrics, company information, and market data.",
@@ -174,60 +192,29 @@ func main() {
 		Description: "Get intraday stock price data for a specific company using its stock symbol (e.g., AAPL, GOOGL, MSFT). Returns price, volume, and other financial metrics for the specified time interval.",
 	}, stockIntradayPriceTool.Get)
 
-	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+	mcpHTTPHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		return server
 	}, nil)
 
-	adapter := NewFastHTTPAdapter(mcpHandler)
+	log.Println("⚡ Configuring Fiber application...")
+	app := setupFiberApp()
 
-	mainHandler := func(ctx *fasthttp.RequestCtx) {
+	setupMiddleware(app)
 
-		setupCORS(ctx)
-
-		if string(ctx.Method()) == "OPTIONS" {
-			ctx.SetStatusCode(fasthttp.StatusOK)
-			return
-		}
-
-		if string(ctx.Path()) == "/health" {
-			healthCheckHandler(ctx)
-			return
-		}
-
-		if strings.HasPrefix(string(ctx.Path()), "/mcp") || string(ctx.Path()) == "/" {
-			adapter.Handler(ctx)
-			return
-		}
-
-		ctx.SetStatusCode(fasthttp.StatusNotFound)
-		ctx.SetContentType("application/json")
-		ctx.SetBodyString(`{"error":"endpoint not found"}`)
-	}
-
-	server_config := &fasthttp.Server{
-		Handler:                       mainHandler,
-		DisableKeepalive:              false,
-		ReadTimeout:                   30000, // 30 seconds
-		WriteTimeout:                  30000, // 30 seconds
-		IdleTimeout:                   60000, // 60 seconds
-		MaxConnsPerIP:                 1000,
-		MaxRequestsPerConn:            1000,
-		MaxRequestBodySize:            10 * 1024 * 1024, // 10MB
-		ReduceMemoryUsage:             true,
-		TCPKeepalive:                  true,
-		NoDefaultServerHeader:         true,
-		NoDefaultContentType:          true,
-		DisableHeaderNamesNormalizing: false,
-	}
-
-	server_config.Name = "Finance-MCP-Server/1.0"
+	setupRoutes(app, mcpHTTPHandler)
 
 	port := ":8080"
-	log.Printf("FastHTTP server starting on port %s", port)
-	log.Printf("Health check available at: http://localhost%s/health", port)
-	log.Printf("MCP endpoint available at: http://localhost%s/", port)
 
-	if err := server_config.ListenAndServe(port); err != nil {
-		log.Fatalf("FastHTTP server failed to start: %v", err)
+	log.Println("✅ Finance MCP Server configured successfully")
+	log.Printf("🌐 Server starting on port %s", port)
+	log.Printf("🏥 Health check: http://localhost%s/health", port)
+	log.Printf("📋 API info: http://localhost%s/info", port)
+	log.Printf("🔗 MCP endpoint: http://localhost%s/", port)
+	log.Println("⚡ Using FastHTTP client with connection pooling")
+	log.Printf("🔧 Client stats endpoint: http://localhost%s/health (includes client metrics)", port)
+	log.Println("📈 Ready to serve financial market data requests with optimized performance!")
+
+	if err := app.Listen(port); err != nil {
+		log.Fatalf("❌ Fiber server failed to start: %v", err)
 	}
 }
