@@ -6,15 +6,15 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
-
 	"github.com/yeferson59/finance-mcp/internal/models"
+	"github.com/yeferson59/finance-mcp/pkg/parser"
+	"github.com/yeferson59/finance-mcp/pkg/requests"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -91,59 +91,24 @@ func NewOverviewStock(apiURL, apiKey string) *OverviewStock {
 // The method automatically converts stock symbols to uppercase and handles
 // various Alpha Vantage response formats including error responses.
 func (os *OverviewStock) Get(ctx context.Context, req *mcp.CallToolRequest, input models.SymbolInput) (*mcp.CallToolResult, models.OverviewOutput, error) {
-	// Validate input parameters
-	if strings.TrimSpace(input.Symbol) == "" {
-		return nil, models.OverviewOutput{}, fmt.Errorf("stock symbol cannot be empty")
-	}
+	client := requests.NewAlpha(
+		os.APIURL,
+		os.APIKey,
+		input.Symbol,
+		[]requests.Query{
+			requests.NewQuery("function", "OVERVIEW"),
+		},
+	)
 
-	// Normalize symbol to uppercase for API consistency
-	symbol := strings.ToUpper(strings.TrimSpace(input.Symbol))
-
-	// Validate symbol format (basic check for common patterns)
-	if len(symbol) > 10 {
-		return nil, models.OverviewOutput{}, fmt.Errorf("stock symbol '%s' appears to be invalid (too long)", symbol)
-	}
-
-	// Construct Alpha Vantage API URL
-	apiURL := fmt.Sprintf("%s/query?function=OVERVIEW&symbol=%s&apikey=%s",
-		os.APIURL, symbol, os.APIKey)
-
-	// Create HTTP request with context for proper cancellation
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	res, err := client.Get()
 	if err != nil {
-		return nil, models.OverviewOutput{}, fmt.Errorf("failed to create HTTP request: %w", err)
+		return nil, models.OverviewOutput{}, fmt.Errorf("failed to fetch stock data for symbol '%s': %w", input.Symbol, err)
 	}
 
-	// Set appropriate headers for API request
-	httpReq.Header.Set("User-Agent", "Simple-MCP-Server/1.0")
-	httpReq.Header.Set("Accept", "application/json")
-
-	// Execute HTTP request using configured client
-	res, err := os.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, models.OverviewOutput{}, fmt.Errorf("failed to fetch stock data for symbol '%s': %w", symbol, err)
-	}
-	defer res.Body.Close()
-
-	// Check HTTP response status
-	if res.StatusCode != http.StatusOK {
-		return nil, models.OverviewOutput{}, fmt.Errorf("Alpha Vantage API returned status %d for symbol '%s': this may indicate an invalid symbol, API rate limit exceeded, or service unavailability", res.StatusCode, symbol)
-	}
-
-	// Parse JSON response
 	var data models.OverviewOutput
-	decoder := sonic.ConfigDefault.NewDecoder(res.Body)
+	NewJson := parser.NewJSON()
 
-	if err := decoder.Decode(&data); err != nil {
-		return nil, models.OverviewOutput{}, fmt.Errorf("failed to parse stock data response for symbol '%s': %w", symbol, err)
-	}
+	err = NewJson.Parse(&data, bytes.NewReader(res))
 
-	// Validate that we received actual stock data
-	if data.Symbol == "" && data.Name == "" {
-		return nil, models.OverviewOutput{}, fmt.Errorf("no stock data found for symbol '%s': symbol may not exist or may not be supported by Alpha Vantage", symbol)
-	}
-
-	// Return successful result
-	// First return value is nil as per MCP SDK convention - actual data is in second return value
 	return nil, data, nil
 }
