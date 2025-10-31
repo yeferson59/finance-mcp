@@ -13,6 +13,7 @@
 package request
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -215,22 +216,21 @@ func (ra *RequestAlpha) GetWithContext(ctx context.Context) ([]byte, error) {
 }
 
 // checkAPIError checks if the Alpha Vantage response contains an error message
+// Uses bytes.Contains for better performance by avoiding string allocation
 func (ra *RequestAlpha) checkAPIError(body []byte) error {
-	bodyStr := string(body)
-
 	errorPatterns := []struct {
-		pattern string
+		pattern []byte
 		message string
 	}{
-		{"Invalid API call", "Invalid API function or parameters"},
-		{"the parameter apikey is invalid", "Invalid API key"},
-		{"higher API call frequency", "API call frequency limit reached"},
-		{"Thank you for using Alpha Vantage", "API limit reached - premium key required"},
-		{"Error Message", "API returned an error"},
+		{[]byte("Invalid API call"), "Invalid API function or parameters"},
+		{[]byte("the parameter apikey is invalid"), "Invalid API key"},
+		{[]byte("higher API call frequency"), "API call frequency limit reached"},
+		{[]byte("Thank you for using Alpha Vantage"), "API limit reached - premium key required"},
+		{[]byte("Error Message"), "API returned an error"},
 	}
 
 	for _, errorPattern := range errorPatterns {
-		if strings.Contains(bodyStr, errorPattern.pattern) {
+		if bytes.Contains(body, errorPattern.pattern) {
 			return fmt.Errorf("API error: %s", errorPattern.message)
 		}
 	}

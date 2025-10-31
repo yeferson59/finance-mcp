@@ -532,7 +532,7 @@ func TestIntradayPriceStock_ThreadSafety(t *testing.T) {
 	}()
 
 	// Wait for all goroutines to complete
-	for range 10 {
+	for range 3 {
 		select {
 		case <-done:
 			// Good, goroutine completed

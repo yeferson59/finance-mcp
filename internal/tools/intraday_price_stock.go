@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/yeferson59/finance-mcp/internal/models"
+	"github.com/yeferson59/finance-mcp/internal/validation"
 	"github.com/yeferson59/finance-mcp/pkg/client"
 	"github.com/yeferson59/finance-mcp/pkg/parser"
 	"github.com/yeferson59/finance-mcp/pkg/request"
@@ -82,36 +83,14 @@ func NewIntradayPriceStock(apiURL, apiKey string) *IntradayPriceStock {
 
 // validateInput performs comprehensive input validation on the intraday price input
 func (s *IntradayPriceStock) validateInput(input models.IntradayPriceInput) error {
-	// Validate symbol
-	if strings.TrimSpace(input.Symbol) == "" {
-		return fmt.Errorf("symbol cannot be empty")
-	}
-
-	// Validate symbol format (basic check for common patterns)
-	symbol := strings.TrimSpace(input.Symbol)
-	if len(symbol) > 10 {
-		return fmt.Errorf("symbol '%s' appears to be invalid (too long)", symbol)
-	}
-
-	// Check for invalid characters in symbol
-	for _, char := range symbol {
-		if !((char >= 'A' && char <= 'Z') ||
-			(char >= 'a' && char <= 'z') ||
-			(char >= '0' && char <= '9') ||
-			char == '.') {
-			return fmt.Errorf("symbol '%s' contains invalid characters", symbol)
-		}
+	// Validate symbol using shared validation
+	if err := validation.ValidateSymbol(input.Symbol); err != nil {
+		return err
 	}
 
 	// Validate interval
 	validIntervals := []string{"1min", "5min", "15min", "30min", "60min"}
-	intervalValid := false
-
-	if slices.Contains(validIntervals, *input.OutputSize) {
-		intervalValid = true
-	}
-
-	if !intervalValid {
+	if !slices.Contains(validIntervals, input.Interval) {
 		return fmt.Errorf("invalid interval '%s'. Valid intervals are: %s",
 			input.Interval, strings.Join(validIntervals, ", "))
 	}
@@ -214,13 +193,11 @@ func (s *IntradayPriceStock) Get(ctx context.Context, req *mcp.CallToolRequest, 
 	queries := s.buildQueries(input)
 
 	// Create request with proper query parameters using injected client
-	s.mu.RLock()
 	requestClient := request.NewAlphaWithClient(
 		s.alphaClient,
 		input.Symbol,
 		queries,
 	)
-	s.mu.RUnlock()
 
 	// Make API request with context support
 	res, err := requestClient.GetWithContext(ctx)
