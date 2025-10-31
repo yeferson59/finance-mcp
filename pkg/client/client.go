@@ -283,10 +283,18 @@ func (c *FastHTTPClient) convertResponse(resp *fasthttp.Response) (*Response, er
 
 // decompressBody handles automatic decompression of response body
 func (c *FastHTTPClient) decompressBody(resp *fasthttp.Response) ([]byte, error) {
-	bodyBytes := make([]byte, len(resp.Body()))
-	copy(bodyBytes, resp.Body())
-
 	contentEncoding := string(resp.Header.Peek("Content-Encoding"))
+
+	// Fast path: no compression (most common case for Alpha Vantage)
+	// Avoid unnecessary copy by directly using the response body
+	if contentEncoding == "" {
+		bodyBytes := make([]byte, len(resp.Body()))
+		copy(bodyBytes, resp.Body())
+		return bodyBytes, nil
+	}
+
+	// For compressed responses, we need to decompress
+	bodyBytes := resp.Body()
 
 	switch contentEncoding {
 	case "gzip":
@@ -313,9 +321,6 @@ func (c *FastHTTPClient) decompressBody(resp *fasthttp.Response) ([]byte, error)
 		}
 
 		return decompressed, nil
-
-	case "":
-		return bodyBytes, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported compression type: %s", contentEncoding)

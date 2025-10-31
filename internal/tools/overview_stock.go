@@ -8,10 +8,10 @@ package tools
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/yeferson59/finance-mcp/internal/models"
+	"github.com/yeferson59/finance-mcp/internal/validation"
 	"github.com/yeferson59/finance-mcp/pkg/client"
 	"github.com/yeferson59/finance-mcp/pkg/parser"
 	"github.com/yeferson59/finance-mcp/pkg/request"
@@ -72,26 +72,7 @@ func NewOverviewStock(apiURL, apiKey string) *OverviewStock {
 
 // validateInput performs input validation on the symbol input
 func (os *OverviewStock) validateInput(input models.SymbolInput) error {
-	if strings.TrimSpace(input.Symbol) == "" {
-		return fmt.Errorf("symbol cannot be empty")
-	}
-
-	symbol := strings.TrimSpace(input.Symbol)
-
-	if len(symbol) > 10 {
-		return fmt.Errorf("symbol '%s' appears to be invalid (too long)", symbol)
-	}
-
-	for _, char := range symbol {
-		if !((char >= 'A' && char <= 'Z') ||
-			(char >= 'a' && char <= 'z') ||
-			(char >= '0' && char <= '9') ||
-			char == '.') {
-			return fmt.Errorf("symbol '%s' contains invalid characters", symbol)
-		}
-	}
-
-	return nil
+	return validation.ValidateSymbol(input.Symbol)
 }
 
 // validateResponse checks if the API response contains error information

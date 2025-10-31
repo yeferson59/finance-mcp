@@ -2,7 +2,6 @@ package parser
 
 import (
 	"io"
-	"sync"
 
 	"github.com/bytedance/sonic"
 )
@@ -10,11 +9,10 @@ import (
 // JSON represents a high-performance JSON parser optimized for financial data.
 // It uses sonic's optimized configuration to provide better performance
 // for API responses containing stock/market data.
+// Note: sonic.API is thread-safe, no additional locking is required.
 type JSON struct {
 	// config holds the sonic API configuration
 	config sonic.API
-	// mu protects concurrent access for thread safety
-	mu sync.RWMutex
 }
 
 // NewJSON creates a new optimized JSON parser instance.
@@ -44,10 +42,8 @@ func NewJSON() *JSON {
 //   - src: io.Reader containing JSON data
 //
 // Returns error if parsing fails or if input is invalid.
+// Note: sonic decoder is thread-safe, no locking needed.
 func (j *JSON) Parse(dst any, src io.Reader) error {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-
 	decoder := j.config.NewDecoder(src)
 	return decoder.Decode(dst)
 }

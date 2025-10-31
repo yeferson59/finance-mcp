@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/yeferson59/finance-mcp/internal/models"
+	"github.com/yeferson59/finance-mcp/internal/validation"
 	"github.com/yeferson59/finance-mcp/pkg/client"
 	"github.com/yeferson59/finance-mcp/pkg/parser"
 	"github.com/yeferson59/finance-mcp/pkg/request"
@@ -82,25 +83,9 @@ func NewIntradayPriceStock(apiURL, apiKey string) *IntradayPriceStock {
 
 // validateInput performs comprehensive input validation on the intraday price input
 func (s *IntradayPriceStock) validateInput(input models.IntradayPriceInput) error {
-	// Validate symbol
-	if strings.TrimSpace(input.Symbol) == "" {
-		return fmt.Errorf("symbol cannot be empty")
-	}
-
-	// Validate symbol format (basic check for common patterns)
-	symbol := strings.TrimSpace(input.Symbol)
-	if len(symbol) > 10 {
-		return fmt.Errorf("symbol '%s' appears to be invalid (too long)", symbol)
-	}
-
-	// Check for invalid characters in symbol
-	for _, char := range symbol {
-		if !((char >= 'A' && char <= 'Z') ||
-			(char >= 'a' && char <= 'z') ||
-			(char >= '0' && char <= '9') ||
-			char == '.') {
-			return fmt.Errorf("symbol '%s' contains invalid characters", symbol)
-		}
+	// Validate symbol using shared validation
+	if err := validation.ValidateSymbol(input.Symbol); err != nil {
+		return err
 	}
 
 	// Validate interval
