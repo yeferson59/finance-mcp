@@ -180,76 +180,71 @@ func (r *AlphaVantageResponse) ProcessTimeSeries() (*models.IntradayStockOutput,
 		TimeSeries: make([]models.OHLCVFloat, 0, len(r.TimeSeries)),
 	}
 
-	results := make(chan models.OHLCVFloat, len(r.TimeSeries))
-	errChan := make(chan error, len(r.TimeSeries))
-	var wg sync.WaitGroup
-
-	for timestampStr, ohlcv := range r.TimeSeries {
-		wg.Add(1)
-		go func(ts string, o OHLCV) {
-			defer wg.Done()
-
-			timestamp, err := time.Parse("2006-01-02 15:04:05", ts)
+	// For small to medium datasets (< 1000 entries), sequential processing is faster
+	// than goroutine overhead. For larger datasets, we use a worker pool.
+	if len(r.TimeSeries) < 1000 {
+		// Sequential processing for better performance on small datasets
+		for timestampStr, ohlcv := range r.TimeSeries {
+			processedEntry, err := r.processEntry(timestampStr, ohlcv)
 			if err != nil {
-				errChan <- fmt.Errorf("error parsing timestamp %s: %w", ts, err)
-				return
+				return nil, err
 			}
+			processed.TimeSeries = append(processed.TimeSeries, processedEntry)
+		}
+	} else {
+		// Use worker pool for large datasets to limit goroutine count
+		const numWorkers = 8
+		type job struct {
+			timestamp string
+			ohlcv     OHLCV
+		}
 
-			open, err := strconv.ParseFloat(o.Open, 64)
-			if err != nil {
-				errChan <- fmt.Errorf("error parsing open price for %s: %w", ts, err)
-				return
+		jobs := make(chan job, len(r.TimeSeries))
+		results := make(chan models.OHLCVFloat, len(r.TimeSeries))
+		errChan := make(chan error, 1)
+		var wg sync.WaitGroup
+
+		// Start workers
+		for w := 0; w < numWorkers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for j := range jobs {
+					processedEntry, err := r.processEntry(j.timestamp, j.ohlcv)
+					if err != nil {
+						select {
+						case errChan <- err:
+						default:
+						}
+						return
+					}
+					results <- processedEntry
+				}
+			}()
+		}
+
+		// Send jobs
+		go func() {
+			for timestampStr, ohlcv := range r.TimeSeries {
+				jobs <- job{timestampStr, ohlcv}
 			}
+			close(jobs)
+		}()
 
-			high, err := strconv.ParseFloat(o.High, 64)
-			if err != nil {
-				errChan <- fmt.Errorf("error parsing high price for %s: %w", ts, err)
-				return
-			}
+		// Wait and close results
+		wg.Wait()
+		close(results)
+		close(errChan)
 
-			low, err := strconv.ParseFloat(o.Low, 64)
-			if err != nil {
-				errChan <- fmt.Errorf("error parsing low price for %s: %w", ts, err)
-				return
-			}
+		// Check for errors
+		if len(errChan) > 0 {
+			return nil, <-errChan
+		}
 
-			closePrice, err := strconv.ParseFloat(o.Close, 64)
-			if err != nil {
-				errChan <- fmt.Errorf("error parsing close price for %s: %w", ts, err)
-				return
-			}
-
-			volume, err := strconv.ParseInt(o.Volume, 10, 64)
-			if err != nil {
-				errChan <- fmt.Errorf("error parsing volume for %s: %w", ts, err)
-				return
-			}
-
-			processedOHLCV := OHLCVFloat{
-				Timestamp: timestamp,
-				Open:      open,
-				High:      high,
-				Low:       low,
-				Close:     closePrice,
-				Volume:    volume,
-			}
-
-			results <- models.OHLCVFloat(processedOHLCV)
-		}(timestampStr, ohlcv)
-	}
-
-	wg.Wait()
-	close(results)
-	close(errChan)
-
-	// Check for any errors
-	if len(errChan) > 0 {
-		return nil, <-errChan
-	}
-
-	// Collect all results
-	for v := range results {
-		processed.TimeSeries = append(processed.TimeSeries, v)
+		// Collect results
+		for v := range results {
+			processed.TimeSeries = append(processed.TimeSeries, v)
+		}
 	}
 
 	// Sort by timestamp
@@ -258,4 +253,46 @@ func (r *AlphaVantageResponse) ProcessTimeSeries() (*models.IntradayStockOutput,
 	})
 
 	return processed, nil
+}
+
+// processEntry processes a single time series entry
+func (r *AlphaVantageResponse) processEntry(timestampStr string, ohlcv OHLCV) (models.OHLCVFloat, error) {
+	timestamp, err := time.Parse("2006-01-02 15:04:05", timestampStr)
+	if err != nil {
+		return models.OHLCVFloat{}, fmt.Errorf("error parsing timestamp %s: %w", timestampStr, err)
+	}
+
+	open, err := strconv.ParseFloat(ohlcv.Open, 64)
+	if err != nil {
+		return models.OHLCVFloat{}, fmt.Errorf("error parsing open price for %s: %w", timestampStr, err)
+	}
+
+	high, err := strconv.ParseFloat(ohlcv.High, 64)
+	if err != nil {
+		return models.OHLCVFloat{}, fmt.Errorf("error parsing high price for %s: %w", timestampStr, err)
+	}
+
+	low, err := strconv.ParseFloat(ohlcv.Low, 64)
+	if err != nil {
+		return models.OHLCVFloat{}, fmt.Errorf("error parsing low price for %s: %w", timestampStr, err)
+	}
+
+	closePrice, err := strconv.ParseFloat(ohlcv.Close, 64)
+	if err != nil {
+		return models.OHLCVFloat{}, fmt.Errorf("error parsing close price for %s: %w", timestampStr, err)
+	}
+
+	volume, err := strconv.ParseInt(ohlcv.Volume, 10, 64)
+	if err != nil {
+		return models.OHLCVFloat{}, fmt.Errorf("error parsing volume for %s: %w", timestampStr, err)
+	}
+
+	return models.OHLCVFloat{
+		Timestamp: timestamp,
+		Open:      open,
+		High:      high,
+		Low:       low,
+		Close:     closePrice,
+		Volume:    volume,
+	}, nil
 }

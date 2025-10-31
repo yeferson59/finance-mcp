@@ -105,13 +105,7 @@ func (s *IntradayPriceStock) validateInput(input models.IntradayPriceInput) erro
 
 	// Validate interval
 	validIntervals := []string{"1min", "5min", "15min", "30min", "60min"}
-	intervalValid := false
-
-	if slices.Contains(validIntervals, *input.OutputSize) {
-		intervalValid = true
-	}
-
-	if !intervalValid {
+	if !slices.Contains(validIntervals, input.Interval) {
 		return fmt.Errorf("invalid interval '%s'. Valid intervals are: %s",
 			input.Interval, strings.Join(validIntervals, ", "))
 	}
@@ -214,13 +208,11 @@ func (s *IntradayPriceStock) Get(ctx context.Context, req *mcp.CallToolRequest, 
 	queries := s.buildQueries(input)
 
 	// Create request with proper query parameters using injected client
-	s.mu.RLock()
 	requestClient := request.NewAlphaWithClient(
 		s.alphaClient,
 		input.Symbol,
 		queries,
 	)
-	s.mu.RUnlock()
 
 	// Make API request with context support
 	res, err := requestClient.GetWithContext(ctx)

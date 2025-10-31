@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/yeferson59/finance-mcp/internal/models"
@@ -37,10 +36,8 @@ type OverviewStock struct {
 	alphaClient *request.AlphaVantageClient
 
 	// parser is a reusable JSON parser instance to avoid allocation overhead
+	// Note: sonic parser is already thread-safe, no mutex needed
 	parser *parser.JSON
-
-	// mu protects the parser for concurrent access
-	mu sync.RWMutex
 }
 
 // NewOverviewStock creates a new OverviewStock tool instance with the provided
@@ -165,10 +162,8 @@ func (os *OverviewStock) Get(ctx context.Context, req *mcp.CallToolRequest, inpu
 
 	var data models.OverviewOutput
 
-	os.mu.Lock()
+	// sonic parser is already thread-safe, no lock needed
 	err = os.parser.ParseBytes(&data, res)
-	os.mu.Unlock()
-
 	if err != nil {
 		return nil, models.OverviewOutput{}, fmt.Errorf("failed to parse stock data for symbol '%s': %w", input.Symbol, err)
 	}
